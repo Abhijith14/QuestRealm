@@ -43,6 +43,14 @@
     el.style.animationDelay = `${i * 110}ms`;
   });
 
+  // Curtain transition when returning to the salon.
+  const backLink = document.querySelector('.back-link');
+  backLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.body.classList.add('leaving');
+    setTimeout(() => { window.location.href = backLink.href; }, 450);
+  });
+
   // ── Elements ──────────────────────────────────────────────────
   const podiumEl = document.getElementById('podium');
   const podiumWrap = document.getElementById('podium-wrap');

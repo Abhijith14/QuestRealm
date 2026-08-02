@@ -12,10 +12,15 @@
     const leader = [...players].sort(
       (a, b) => b.score - a.score || a.name.localeCompare(b.name)
     )[0];
+    const hottest = [...players].sort((a, b) => (b.streak || 0) - (a.streak || 0))[0];
+    const streakNote =
+      hottest && hottest.streak >= 2
+        ? ` · <strong>🔥 ${hottest.streak}</strong> streak (${hottest.emoji} ${escapeHtml(hottest.name)})`
+        : '';
     el.innerHTML =
       `${players.length} guest${players.length === 1 ? '' : 's'} · ` +
       `reigning champion <strong>${leader.emoji} ${escapeHtml(leader.name)}</strong> ` +
-      `with <strong>${leader.score}</strong> pts`;
+      `with <strong>${leader.score}</strong> pts${streakNote}`;
   });
 
   // Staggered entrance reveal.

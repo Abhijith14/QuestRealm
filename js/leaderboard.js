@@ -51,8 +51,11 @@
 
   const dlgGuest = document.getElementById('dlg-guest');
   const dlgScore = document.getElementById('dlg-score');
+  const dlgWin = document.getElementById('dlg-win');
   const formGuest = document.getElementById('form-guest');
   const formScore = document.getElementById('form-score');
+  const formWin = document.getElementById('form-win');
+  const winSelect = document.getElementById('win-player');
   const guestNameInput = document.getElementById('guest-name');
   const guestError = document.getElementById('guest-error');
   const scoreError = document.getElementById('score-error');
@@ -73,7 +76,7 @@
       (a, b) => b.score - a.score || a.name.localeCompare(b.name)
     );
 
-  function render({ highlightId = null, animate = false } = {}) {
+  function render({ highlightId = null, animate = false, sparkleChars = ['✦'] } = {}) {
     const players = sorted();
     const hasPlayers = players.length > 0;
 
@@ -83,9 +86,9 @@
     renderPodium(players);
 
     if (animate) {
-      flip(ledgerEl, () => renderLedger(players, highlightId));
+      flip(ledgerEl, () => renderLedger(players, highlightId, sparkleChars));
     } else {
-      renderLedger(players, highlightId);
+      renderLedger(players, highlightId, sparkleChars);
     }
   }
 
@@ -106,6 +109,7 @@
               <span class="podium-emoji">${p.emoji}</span>
               <span class="podium-name">${escapeHtml(p.name)}</span>
               <span class="podium-score">${p.score} <small>${game.scoreUnit}</small></span>
+              ${streakBadge(p)}
             </div>
             <div class="podium-pillar">
               <svg class="laurel left" viewBox="0 0 16 34" aria-hidden="true"><use href="#laurel"></use></svg>
@@ -117,7 +121,7 @@
       .join('');
   }
 
-  function renderLedger(players, highlightId) {
+  function renderLedger(players, highlightId, sparkleChars = ['✦']) {
     const maxScore = Math.max(1, ...players.map((p) => p.score));
 
     ledgerEl.innerHTML = players
@@ -128,7 +132,7 @@
           <li class="ledger-row ${rankClass}" data-pid="${p.id}">
             <span class="row-rank">${idx + 1}</span>
             <span class="row-emoji">${p.emoji}</span>
-            <span class="row-name">${escapeHtml(p.name)}</span>
+            <span class="row-name">${escapeHtml(p.name)}${streakBadge(p)}</span>
             <span class="row-bar-track" aria-hidden="true">
               <span class="row-bar" style="width:${pct}%"></span>
             </span>
@@ -142,10 +146,17 @@
       const row = ledgerEl.querySelector(`[data-pid="${highlightId}"]`);
       if (row) {
         row.classList.add('row-glow');
-        sparkle(row);
+        sparkle(row, sparkleChars);
         setTimeout(() => row.classList.remove('row-glow'), 1600);
       }
     }
+  }
+
+  // Gold pill shown next to a guest who holds an active win streak.
+  function streakBadge(p) {
+    if (!p.streak) return '';
+    const title = `${p.streak} consecutive win${p.streak === 1 ? '' : 's'} · ${p.wins} total · best streak ${p.bestStreak}`;
+    return `<span class="streak-pill${p.streak >= 3 ? ' blazing' : ''}" title="${title}">🔥 ${p.streak}</span>`;
   }
 
   // FLIP: rows glide to their new rank instead of snapping.
@@ -183,11 +194,11 @@
     })(start);
   }
 
-  function sparkle(row) {
+  function sparkle(row, chars = ['✦']) {
     for (let i = 0; i < 7; i++) {
       const s = document.createElement('span');
       s.className = 'spark';
-      s.textContent = '✦';
+      s.textContent = chars[i % chars.length];
       s.style.left = `${15 + Math.random() * 70}%`;
       s.style.animationDelay = `${Math.random() * 250}ms`;
       s.style.fontSize = `${0.6 + Math.random() * 0.7}rem`;
@@ -261,6 +272,30 @@
     scoreError.hidden = true;
     openDialog(dlgScore);
     scoreValue.focus();
+  });
+
+  document.getElementById('btn-crown-win').addEventListener('click', () => {
+    const players = sorted();
+    if (!players.length) {
+      openDialog(dlgGuest);
+      guestNameInput.focus();
+      return;
+    }
+    winSelect.innerHTML = players
+      .map((p) => `<option value="${p.id}">${p.emoji} ${escapeHtml(p.name)}${p.streak ? ` — 🔥 ${p.streak}` : ''}</option>`)
+      .join('');
+    formWin.reset();
+    openDialog(dlgWin);
+    winSelect.focus();
+  });
+
+  // ── Crown the victor (win streaks) ────────────────────────────
+  formWin.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const winner = QRStore.recordWin(gameId, winSelect.value);
+    if (!winner) return;
+    closeDialog(dlgWin);
+    render({ highlightId: winner.id, animate: true, sparkleChars: ['👑', '✦', '✦'] });
   });
 
   // ── Add guest ─────────────────────────────────────────────────

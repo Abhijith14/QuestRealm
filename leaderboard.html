@@ -45,6 +45,9 @@
       <button class="btn btn-gold" id="btn-add-score">
         <span class="btn-icon">✦</span> Add Score
       </button>
+      <button class="btn btn-outline" id="btn-crown-win">
+        <span class="btn-icon">👑</span> Crown the Victor
+      </button>
       <button class="btn btn-outline" id="btn-add-guest">
         <span class="btn-icon">＋</span> Add Guest
       </button>
@@ -96,6 +99,23 @@
 
       <p class="form-error" id="guest-error" hidden></p>
       <button type="submit" class="btn btn-gold btn-wide">Welcome them in</button>
+    </form>
+  </dialog>
+
+  <!-- ══════════ Crown the Victor dialog ══════════ -->
+  <dialog class="modal" id="dlg-win">
+    <form method="dialog" class="modal-card" id="form-win">
+      <button type="button" class="modal-close" data-close aria-label="Close">✕</button>
+      <h3 class="modal-title">Crown the Victor</h3>
+      <svg viewBox="0 0 300 24" class="flourish small" aria-hidden="true"><use href="#flourish"></use></svg>
+
+      <label class="field">
+        <span class="field-label">Who won the game?</span>
+        <select id="win-player" required></select>
+      </label>
+      <p class="field-hint centered">The victor's win streak climbs by one — everyone else's streak resets.</p>
+
+      <button type="submit" class="btn btn-gold btn-wide">Bestow the Emperor's Favour</button>
     </form>
   </dialog>
 

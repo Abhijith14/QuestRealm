@@ -57,6 +57,12 @@
   const ledgerEl = document.getElementById('ledger-list');
   const emptyEl = document.getElementById('empty-state');
 
+  const historyToggle = document.getElementById('history-toggle');
+  const historyPanel = document.getElementById('history-panel');
+  const roundsList = document.getElementById('rounds-list');
+  const activityList = document.getElementById('activity-list');
+  const activityEmpty = document.getElementById('activity-empty');
+
   const dlgGuest = document.getElementById('dlg-guest');
   const dlgScore = document.getElementById('dlg-score');
   const dlgWin = document.getElementById('dlg-win');
@@ -98,7 +104,93 @@
     } else {
       renderLedger(players, highlightId, sparkleChars);
     }
+
+    renderRounds(players);
+    renderActivity();
   }
+
+  // ── Game History: the Score Book (recorded rounds) ────────────
+  function renderRounds(players) {
+    const rounds = QRStore.loadRounds(gameId);
+    const byId = Object.fromEntries(players.map((p) => [p.id, p]));
+
+    if (!rounds.length) {
+      roundsList.innerHTML = '<p class="empty-sub">No games recorded yet — Crown the Victor to start the book.</p>';
+      return;
+    }
+
+    roundsList.innerHTML = rounds
+      .map((r) => {
+        const chips = Object.entries(r.scores)
+          .map(([pid, delta]) => {
+            const p = byId[pid] || { name: 'Former guest', emoji: '❔' };
+            const isWinner = pid === r.winnerId;
+            return `
+              <span class="round-chip${isWinner ? ' winner' : ''}">
+                <span class="round-chip-emoji">${p.emoji}</span>
+                <span class="round-chip-name">${escapeHtml(p.name)}</span>
+                <span class="round-chip-score">${delta}</span>
+                ${isWinner ? '<span class="round-chip-crown" aria-hidden="true">👑</span>' : ''}
+              </span>`;
+          })
+          .join('');
+
+        const tieBadge = r.tie
+          ? `<span class="tie-badge" title="${escapeHtml(r.tieNote || 'Resolved by tiebreak')}">🤝 Tiebreak</span>`
+          : '';
+
+        return `
+          <li class="round-row${r.tie ? ' round-tie' : ''}">
+            <div class="round-head">
+              <span class="round-label">Game ${r.round}</span>
+              ${tieBadge}
+            </div>
+            <div class="round-chips">${chips}</div>
+            ${r.tie && r.tieNote ? `<p class="round-note">🤝 ${escapeHtml(r.tieNote)}</p>` : ''}
+          </li>`;
+      })
+      .join('');
+  }
+
+  // ── Game History: Recent Activity (live log going forward) ────
+  function renderActivity() {
+    const log = QRStore.loadActivity(gameId);
+    const hasLog = log.length > 0;
+
+    activityList.hidden = !hasLog;
+    activityEmpty.hidden = hasLog;
+    if (!hasLog) return;
+
+    activityList.innerHTML = [...log]
+      .reverse()
+      .map((e) => {
+        const when = new Date(e.ts).toLocaleString(undefined, {
+          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+        });
+        if (e.type === 'win') {
+          return `
+            <li class="activity-row activity-win">
+              <span class="activity-emoji" aria-hidden="true">👑</span>
+              <span class="activity-text"><strong>${escapeHtml(e.name)}</strong> was crowned victor</span>
+              <span class="activity-time">${when}</span>
+            </li>`;
+        }
+        const sign = e.delta >= 0 ? '+' : '';
+        return `
+          <li class="activity-row">
+            <span class="activity-emoji" aria-hidden="true">${e.emoji}</span>
+            <span class="activity-text"><strong>${escapeHtml(e.name)}</strong> ${sign}${e.delta} pts <span class="activity-total">(now ${e.newScore})</span></span>
+            <span class="activity-time">${when}</span>
+          </li>`;
+      })
+      .join('');
+  }
+
+  historyToggle.addEventListener('click', () => {
+    const isOpen = historyPanel.classList.toggle('open');
+    historyToggle.classList.toggle('active', isOpen);
+    historyToggle.setAttribute('aria-expanded', String(isOpen));
+  });
 
   function renderPodium(players) {
     const top = players.slice(0, 3);

@@ -73,6 +73,37 @@
       </div>
     </section>
 
+    <!-- Game history -->
+    <section class="history reveal" aria-label="Game history">
+      <button class="history-toggle" id="history-toggle" type="button" aria-expanded="false" aria-controls="history-panel">
+        <span class="btn-icon">📖</span> View Game History
+        <span class="toggle-caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="history-panel" id="history-panel">
+        <div class="history-panel-inner">
+
+          <div class="history-block">
+            <div class="ledger-head">
+              <svg viewBox="0 0 300 24" class="flourish small" aria-hidden="true"><use href="#flourish"></use></svg>
+              <h2 class="ledger-title">The Score Book</h2>
+            </div>
+            <p class="history-sub">Every recorded game, in play order — tiebreaks noted where the table was split.</p>
+            <ol class="rounds-list" id="rounds-list"></ol>
+          </div>
+
+          <div class="history-block">
+            <div class="ledger-head">
+              <svg viewBox="0 0 300 24" class="flourish small" aria-hidden="true"><use href="#flourish"></use></svg>
+              <h2 class="ledger-title">Recent Activity</h2>
+            </div>
+            <ol class="activity-list" id="activity-list"></ol>
+            <p class="empty-sub" id="activity-empty">Nothing logged yet — new score changes and crownings will appear here.</p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
   </main>
 
   <footer class="board-footer reveal">

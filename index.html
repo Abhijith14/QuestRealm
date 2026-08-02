@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuestRealm · Where Game Nights Become Legend</title>
+  <meta name="description" content="Track your home game nights and leaderboards.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏆</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="lobby">
+
+  <div class="vignette" aria-hidden="true"></div>
+
+  <header class="lobby-header reveal">
+    <div class="ornament" aria-hidden="true">
+      <svg viewBox="0 0 300 24" class="flourish"><use href="#flourish"></use></svg>
+    </div>
+    <h1 class="lobby-title">QuestRealm</h1>
+    <p class="lobby-subtitle">— Where Game Nights Become Legend —</p>
+    <p class="lobby-tagline">Choose a game. Settle the scores. Claim eternal bragging rights.</p>
+  </header>
+
+  <main class="lobby-main">
+    <section class="game-grid" aria-label="Game selection">
+
+      <!-- Grand Austria Hotel -->
+      <a class="game-card gah-card reveal" href="leaderboard.html?game=grand-austria-hotel" data-game="grand-austria-hotel">
+        <div class="card-frame" aria-hidden="true"></div>
+        <div class="card-art" aria-hidden="true">
+          <svg viewBox="0 0 200 140" class="art-svg">
+            <!-- Hotel facade -->
+            <rect x="30" y="46" width="140" height="80" fill="var(--art-wall)" stroke="var(--art-line)" stroke-width="2"/>
+            <rect x="20" y="38" width="160" height="10" fill="var(--art-trim)" stroke="var(--art-line)" stroke-width="1.5"/>
+            <path d="M40 38 L100 12 L160 38 Z" fill="var(--art-roof)" stroke="var(--art-line)" stroke-width="2"/>
+            <circle cx="100" cy="30" r="5" fill="var(--art-gold)"/>
+            <!-- Windows -->
+            <g fill="var(--art-window)" stroke="var(--art-line)" stroke-width="1.5">
+              <rect x="44" y="58" width="18" height="24" rx="9"/>
+              <rect x="76" y="58" width="18" height="24" rx="9"/>
+              <rect x="108" y="58" width="18" height="24" rx="9"/>
+              <rect x="140" y="58" width="18" height="24" rx="9"/>
+            </g>
+            <!-- Door with awning -->
+            <rect x="84" y="94" width="32" height="32" rx="2" fill="var(--art-door)" stroke="var(--art-line)" stroke-width="2"/>
+            <path d="M78 94 Q100 82 122 94 Z" fill="var(--art-awning)" stroke="var(--art-line)" stroke-width="1.5"/>
+            <!-- Coffee cup -->
+            <g transform="translate(148 96)">
+              <ellipse cx="14" cy="30" rx="18" ry="3" fill="rgba(0,0,0,.18)"/>
+              <path d="M2 12 h24 v10 a12 12 0 0 1 -24 0 Z" fill="var(--art-cup)" stroke="var(--art-line)" stroke-width="2"/>
+              <path d="M26 14 h5 a5 5 0 0 1 0 10 h-5" fill="none" stroke="var(--art-line)" stroke-width="2"/>
+              <path d="M8 8 q2 -4 0 -7 M15 8 q2 -4 0 -7 M22 8 q2 -4 0 -7" fill="none" stroke="var(--art-steam)" stroke-width="2" stroke-linecap="round" class="steam"/>
+            </g>
+          </svg>
+        </div>
+        <div class="card-body">
+          <h2 class="card-title">Grand Austria Hotel</h2>
+          <p class="card-flavor">Vienna, at the turn of the century. Whose café shall the Emperor favour?</p>
+          <p class="card-stats" data-stats-for="grand-austria-hotel">No guests registered yet</p>
+          <span class="card-cta">Enter the Hotel <span class="cta-arrow">→</span></span>
+        </div>
+      </a>
+
+      <!-- Coming soon -->
+      <div class="game-card ghost-card reveal" aria-disabled="true">
+        <div class="card-frame" aria-hidden="true"></div>
+        <div class="ghost-inner">
+          <span class="ghost-plus">+</span>
+          <p class="ghost-text">Your next game awaits…</p>
+          <p class="ghost-sub">More tables opening soon</p>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <footer class="lobby-footer reveal">
+    <svg viewBox="0 0 300 24" class="flourish" aria-hidden="true"><use href="#flourish"></use></svg>
+    <p>Scores live in this browser for now — a proper vault (database) is on the roadmap.</p>
+  </footer>
+
+  <!-- Shared SVG defs -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <g id="flourish">
+        <path d="M10 12 H120 M180 12 H290" stroke="currentColor" stroke-width="1.5" fill="none"/>
+        <path d="M130 12 q10 -10 20 0 q-10 10 -20 0 Z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="150" cy="12" r="3" fill="currentColor"/>
+        <path d="M120 12 q5 -6 10 0 M180 12 q-5 -6 -10 0" stroke="currentColor" stroke-width="1.5" fill="none"/>
+        <circle cx="10" cy="12" r="2" fill="currentColor"/>
+        <circle cx="290" cy="12" r="2" fill="currentColor"/>
+      </g>
+    </defs>
+  </svg>
+
+  <script src="js/storage.js"></script>
+  <script src="js/dashboard.js"></script>
+</body>
+</html>

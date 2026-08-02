@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leaderboard · QuestRealm</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="board">
+
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="chandelier" aria-hidden="true">
+    <svg viewBox="0 0 120 80">
+      <line x1="60" y1="0" x2="60" y2="18" stroke="currentColor" stroke-width="2"/>
+      <path d="M20 30 Q60 10 100 30" fill="none" stroke="currentColor" stroke-width="2"/>
+      <path d="M20 30 q-4 14 8 18 M100 30 q4 14 -8 18 M60 22 q0 18 0 22" stroke="currentColor" stroke-width="2" fill="none"/>
+      <g class="candle-glow">
+        <circle cx="20" cy="27" r="4"/>
+        <circle cx="60" cy="18" r="4"/>
+        <circle cx="100" cy="27" r="4"/>
+        <circle cx="28" cy="50" r="3.4"/>
+        <circle cx="60" cy="46" r="3.4"/>
+        <circle cx="92" cy="50" r="3.4"/>
+      </g>
+    </svg>
+  </div>
+
+  <header class="board-header reveal">
+    <a class="back-link" href="index.html">← Back to the Salon</a>
+    <div class="ornament" aria-hidden="true">
+      <svg viewBox="0 0 300 24" class="flourish"><use href="#flourish"></use></svg>
+    </div>
+    <p class="board-kicker" id="board-kicker">Leaderboard</p>
+    <h1 class="board-title" id="board-title">…</h1>
+    <p class="board-tagline" id="board-tagline"></p>
+  </header>
+
+  <main class="board-main">
+
+    <section class="actions reveal" aria-label="Actions">
+      <button class="btn btn-gold" id="btn-add-score">
+        <span class="btn-icon">✦</span> Add Score
+      </button>
+      <button class="btn btn-outline" id="btn-crown-win">
+        <span class="btn-icon">👑</span> Crown the Victor
+      </button>
+      <button class="btn btn-outline" id="btn-add-guest">
+        <span class="btn-icon">＋</span> Add Guest
+      </button>
+    </section>
+
+    <!-- Podium -->
+    <section class="podium-wrap reveal" id="podium-wrap" aria-label="Top three">
+      <div class="podium" id="podium"></div>
+    </section>
+
+    <!-- Full ledger -->
+    <section class="ledger reveal" aria-label="All standings">
+      <div class="ledger-head">
+        <svg viewBox="0 0 300 24" class="flourish small" aria-hidden="true"><use href="#flourish"></use></svg>
+        <h2 class="ledger-title">The Guest Ledger</h2>
+      </div>
+      <ol class="ledger-list" id="ledger-list"></ol>
+      <div class="empty-state" id="empty-state" hidden>
+        <div class="empty-cup" aria-hidden="true">☕</div>
+        <p class="empty-title">The café stands empty…</p>
+        <p class="empty-sub">Add your first guest to open the ledger.</p>
+        <button class="btn btn-gold" id="btn-empty-add">＋ Add the First Guest</button>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="board-footer reveal">
+    <svg viewBox="0 0 300 24" class="flourish" aria-hidden="true"><use href="#flourish"></use></svg>
+    <p id="footer-note">Scores are kept in this browser's ledger.</p>
+  </footer>
+
+  <!-- ══════════ Add Guest dialog ══════════ -->
+  <dialog class="modal" id="dlg-guest">
+    <form method="dialog" class="modal-card" id="form-guest">
+      <button type="button" class="modal-close" data-close aria-label="Close">✕</button>
+      <h3 class="modal-title">Register a Guest</h3>
+      <svg viewBox="0 0 300 24" class="flourish small" aria-hidden="true"><use href="#flourish"></use></svg>
+
+      <label class="field">
+        <span class="field-label">Guest name</span>
+        <input type="text" id="guest-name" name="name" maxlength="24" placeholder="e.g. Archduchess Anna" autocomplete="off" required>
+      </label>
+
+      <div class="field">
+        <span class="field-label">Choose an emblem</span>
+        <div class="emoji-grid" id="emoji-grid" role="listbox" aria-label="Emoji emblem"></div>
+      </div>
+
+      <p class="form-error" id="guest-error" hidden></p>
+      <button type="submit" class="btn btn-gold btn-wide">Welcome them in</button>
+    </form>
+  </dialog>
+
+  <!-- ══════════ Crown the Victor dialog ══════════ -->
+  <dialog class="modal" id="dlg-win">
+    <form method="dialog" class="modal-card" id="form-win">
+      <button type="button" class="modal-close" data-close aria-label="Close">✕</button>
+      <h3 class="modal-title">Crown the Victor</h3>
+      <svg viewBox="0 0 300 24" class="flourish small" aria-hidden="true"><use href="#flourish"></use></svg>
+
+      <label class="field">
+        <span class="field-label">Who won the game?</span>
+        <select id="win-player" required></select>
+      </label>
+      <p class="field-hint centered">The victor's win streak climbs by one — everyone else's streak resets.</p>
+
+      <button type="submit" class="btn btn-gold btn-wide">Bestow the Emperor's Favour</button>
+    </form>
+  </dialog>
+
+  <!-- ══════════ Add Score dialog ══════════ -->
+  <dialog class="modal" id="dlg-score">
+    <form method="dialog" class="modal-card" id="form-score">
+      <button type="button" class="modal-close" data-close aria-label="Close">✕</button>
+      <h3 class="modal-title">Award Points</h3>
+      <svg viewBox="0 0 300 24" class="flourish small" aria-hidden="true"><use href="#flourish"></use></svg>
+
+      <label class="field">
+        <span class="field-label">Guest</span>
+        <select id="score-player" required></select>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Points to add</span>
+        <input type="number" id="score-value" step="1" placeholder="e.g. 10" required>
+        <span class="field-hint">Added to the current total. Negative values correct mistakes.</span>
+      </label>
+
+      <p class="form-error" id="score-error" hidden></p>
+      <button type="submit" class="btn btn-gold btn-wide">Add to the tally</button>
+    </form>
+  </dialog>
+
+  <!-- Shared SVG defs -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <g id="flourish">
+        <path d="M10 12 H120 M180 12 H290" stroke="currentColor" stroke-width="1.5" fill="none"/>
+        <path d="M130 12 q10 -10 20 0 q-10 10 -20 0 Z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="150" cy="12" r="3" fill="currentColor"/>
+        <path d="M120 12 q5 -6 10 0 M180 12 q-5 -6 -10 0" stroke="currentColor" stroke-width="1.5" fill="none"/>
+        <circle cx="10" cy="12" r="2" fill="currentColor"/>
+        <circle cx="290" cy="12" r="2" fill="currentColor"/>
+      </g>
+      <g id="laurel">
+        <path d="M8 30 Q2 18 10 6 M8 30 q-8 -4 -7 -14 M8 30 q2 -12 -4 -20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </g>
+    </defs>
+  </svg>
+
+  <script src="js/storage.js"></script>
+  <script src="js/leaderboard.js"></script>
+</body>
+</html>

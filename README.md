@@ -26,17 +26,21 @@ Plain HTML/CSS/JS — no build step, no dependencies.
 - Serve the folder (`python3 -m http.server`) — recommended so the `?game=` URLs behave nicely, or
 - Host on **GitHub Pages**: Settings → Pages → deploy from the branch root. Done.
 
-## Data & the road to a database
+## Data: Supabase (cache-first), with localStorage as fallback
 
-Scores currently live in the browser's `localStorage`, namespaced per game. Three keys per game:
+Scores live in a **Supabase** (Postgres) database — shared across everyone who opens the site — with three tables per game, mirroring the original storage shape:
 
-- `questrealm:<game-id>:players` — the roster: each player's score, `streak`/`wins`/`bestStreak`, and a per-game score **history** (`{delta, ts}` entries).
-- `questrealm:<game-id>:rounds` — the recorded games (Score Book): per-round scores, the winner, and tie info (`tie`, `tieNote`) when the table split.
-- `questrealm:<game-id>:activity` — the live log (Recent Activity): one entry per Add Score / Crown the Victor action taken through the UI.
+- `players` — the roster: each player's `score`, `streak`/`wins`/`best_streak`, and a per-game score **history** (`{delta, ts}` entries, jsonb).
+- `rounds` — the recorded games (Score Book): per-round scores, the winner, and tie info (`tie`, `tie_note`) when the table split.
+- `activity` — the live log (Recent Activity): one row per Add Score / Crown the Victor action.
 
-Games saved before streaks or history existed are migrated automatically on load. Real results already played (Grand Austria Hotel's first six games, including two tiebreaks) are hardcoded as a one-time seed in `js/storage.js` — it only fires the first time a game's `players` key is empty, so it behaves like real starter data and is freely editable afterward.
+All three are keyed by `game_id` and protected by Row-Level Security. The connection is configured in [`js/config.js`](js/config.js) via a **public anon key** — safe to ship in client JS; the database is guarded by RLS policies, not by hiding the key. The `service_role` key and DB password are never in the repo.
 
-The storage layer is isolated in [`js/storage.js`](js/storage.js) behind a small API (`loadPlayers`, `savePlayers`, `addPlayer`, `addScore`, `recordWin`, `removePlayer`, `loadRounds`, `loadActivity`). To move to a real database later, reimplement those against an API/backend — the UI never touches `localStorage` directly.
+**Cache-first design.** [`js/storage.js`](js/storage.js) keeps an in-memory cache (mirrored to `localStorage`) so reads stay synchronous and the UI renders instantly. On load it hydrates the cache from Supabase and re-renders (`QRStore.onSync`); writes update the cache immediately and push to Supabase in the background. If Supabase is unreachable, the site falls back to the last-known `localStorage` copy. The first time a game exists only locally, its data is migrated up to Supabase automatically.
+
+The storage layer stays isolated behind the same small API (`loadPlayers`, `savePlayers`, `addPlayer`, `addScore`, `recordWin`, `removePlayer`, `loadRounds`, `loadActivity`) — the UI never touches the backend directly. Grand Austria Hotel's first six real games (including two tiebreaks) are seeded directly in the database.
+
+> **Note on access:** writes are currently open to anyone with the site URL (fine for a private/unlisted game-night tool). To lock editing behind a PIN or login later, tighten the RLS write policy — no client change needed.
 
 ## Adding a new game
 

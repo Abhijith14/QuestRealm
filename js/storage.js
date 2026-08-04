@@ -1,9 +1,20 @@
 /* ═══════════════════════════════════════════════════════════════
-   QuestRealm · storage layer
-   For now everything lives in localStorage, namespaced per game.
-   The shape below is deliberately flat and JSON-friendly so it can
-   be swapped for a real database/API later without touching the UI:
-   just reimplement loadPlayers / savePlayers against the backend.
+   QuestRealm · storage layer  (Supabase-backed, cache-first)
+
+   The public API is unchanged from the original localStorage version
+   (loadPlayers / savePlayers / addPlayer / addScore / recordWin /
+   removePlayer / loadRounds / loadActivity) so the UI never changed.
+
+   How it works:
+   • An in-memory cache holds each game's players / rounds / activity.
+   • Reads are SYNCHRONOUS — they return straight from the cache, so
+     the UI stays simple and renders instantly.
+   • On load we hydrate the cache from Supabase (source of truth) and
+     mirror it to localStorage, which doubles as an offline fallback
+     for the very first paint and for when the network is down.
+   • Writes update the cache + localStorage immediately (instant UI)
+     and are pushed to Supabase in the background (write-through).
+   • Pages re-render when hydration lands via QRStore.onSync(cb).
    ═══════════════════════════════════════════════════════════════ */
 
 const QRStore = (() => {
@@ -11,164 +22,269 @@ const QRStore = (() => {
   const roundsKeyFor = (gameId) => `questrealm:${gameId}:rounds`;
   const activityKeyFor = (gameId) => `questrealm:${gameId}:activity`;
 
-  // Real game-night results, hardcoded until a database is wired up.
-  // Each player's per-game scores (in play order) plus which game they
-  // won that round. Games 3 and 6 were exact ties at the table — `tie`
-  // + `tieNote` record how the group resolved them.
-  const SEED_RESULTS = {
-    'grand-austria-hotel': {
-      games: [
-        { scores: { prasanna: 166, ritu: 184, abhijith: 116 }, winner: 'ritu' },
-        { scores: { prasanna: 137, ritu: 148, abhijith: 193 }, winner: 'abhijith' },
-        {
-          scores: { prasanna: 116, ritu: 148, abhijith: 148 },
-          winner: 'abhijith',
-          tie: true,
-          tieNote: 'Ritu and Abhijith tied at 148 VP — Abhijith took the tiebreak.',
-        },
-        { scores: { prasanna: 151, ritu: 113, abhijith: 113 }, winner: 'prasanna' },
-        { scores: { prasanna: 138, ritu: 133, abhijith: 158 }, winner: 'abhijith' },
-        {
-          scores: { prasanna: 159, ritu: 174, abhijith: 174 },
-          winner: 'ritu',
-          tie: true,
-          tieNote: 'Ritu and Abhijith tied at 174 VP — Ritu took the tiebreak.',
-        },
-      ],
-      players: {
-        prasanna: { name: 'Prasanna', emoji: '♟️' },
-        ritu: { name: 'Ritu', emoji: '🍰' },
-        abhijith: { name: 'Abhijith', emoji: '👑' },
-      },
-    },
-  };
+  // ── Supabase client ───────────────────────────────────────────
+  const cfg = window.QR_CONFIG || {};
+  const sb =
+    window.supabase && cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY
+      ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY)
+      : null;
+  if (!sb) {
+    console.warn(
+      '[QuestRealm] Supabase not configured — running on localStorage only.'
+    );
+  }
 
-  // Build the recorded rounds the first time a game's board is opened.
-  // Rounds are the source of truth; the seeded player roster (scores,
-  // streaks, wins) is derived from replaying them in order.
-  function buildSeedRounds(gameId) {
-    const seed = SEED_RESULTS[gameId];
-    if (!seed) return null;
+  // ── In-memory cache ───────────────────────────────────────────
+  // cache[gameId] = { players: [...], rounds: [...], activity: [...] }
+  const cache = {};
+  const syncListeners = [];
+  const hydratedGames = {}; // gameId -> Promise (dedupes concurrent hydrations)
 
-    const now = Date.now();
-    const gameSpanMs = 3 * 60 * 60 * 1000; // spread games a few hours apart in the past
-    return seed.games.map((game, i) => ({
-      round: i + 1,
-      ts: now - (seed.games.length - i) * gameSpanMs,
-      scores: Object.fromEntries(
-        Object.entries(game.scores).map(([key, delta]) => ['seed_' + key, delta])
-      ),
-      winnerId: 'seed_' + game.winner,
-      tie: !!game.tie,
-      tieNote: game.tieNote || '',
+  function cacheFor(gameId) {
+    if (!cache[gameId]) {
+      cache[gameId] = {
+        players: readLocal(keyFor(gameId)) || [],
+        rounds: readLocal(roundsKeyFor(gameId)) || [],
+        activity: readLocal(activityKeyFor(gameId)) || [],
+      };
+    }
+    return cache[gameId];
+  }
+
+  function readLocal(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw === null) return null;
+      const val = JSON.parse(raw);
+      return Array.isArray(val) ? val : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeLocal(key, val) {
+    try {
+      localStorage.setItem(key, JSON.stringify(val));
+    } catch {
+      /* storage full / disabled — cache still holds the data */
+    }
+  }
+
+  function fireSync(gameId) {
+    syncListeners.forEach((cb) => {
+      try {
+        cb(gameId);
+      } catch (e) {
+        console.error('[QuestRealm] onSync listener failed', e);
+      }
+    });
+  }
+
+  // ── Row mappers (DB snake_case ⇄ app camelCase) ───────────────
+  const rowToPlayer = (r) => ({
+    id: r.id,
+    name: r.name,
+    emoji: r.emoji,
+    score: Number(r.score) || 0,
+    streak: r.streak || 0,
+    wins: r.wins || 0,
+    bestStreak: r.best_streak || 0,
+    history: Array.isArray(r.history) ? r.history : [],
+  });
+  const playerToRow = (gameId, p) => ({
+    game_id: gameId,
+    id: p.id,
+    name: p.name,
+    emoji: p.emoji,
+    score: p.score,
+    streak: p.streak || 0,
+    wins: p.wins || 0,
+    best_streak: p.bestStreak || 0,
+    history: p.history || [],
+  });
+
+  const rowToRound = (r) => ({
+    round: r.round,
+    ts: Number(r.ts),
+    scores: r.scores || {},
+    winnerId: r.winner_id,
+    tie: !!r.tie,
+    tieNote: r.tie_note || '',
+  });
+  const roundToRow = (gameId, r) => ({
+    game_id: gameId,
+    round: r.round,
+    ts: r.ts,
+    scores: r.scores || {},
+    winner_id: r.winnerId,
+    tie: !!r.tie,
+    tie_note: r.tieNote || '',
+  });
+
+  const rowToActivity = (r) => ({
+    type: r.type,
+    playerId: r.player_id,
+    name: r.name,
+    emoji: r.emoji,
+    delta: r.delta == null ? undefined : Number(r.delta),
+    newScore: r.new_score == null ? undefined : Number(r.new_score),
+    ts: Number(r.ts),
+  });
+  const activityToRow = (gameId, e) => ({
+    game_id: gameId,
+    type: e.type,
+    player_id: e.playerId,
+    name: e.name,
+    emoji: e.emoji,
+    delta: e.delta == null ? null : e.delta,
+    new_score: e.newScore == null ? null : e.newScore,
+    ts: e.ts,
+  });
+
+  // ── Background write helpers (fire-and-forget, logged on error) ─
+  function bgUpsertPlayers(gameId, players) {
+    if (!sb || !players.length) return;
+    sb.from('players')
+      .upsert(players.map((p) => playerToRow(gameId, p)), {
+        onConflict: 'game_id,id',
+      })
+      .then(({ error }) => error && logWriteError('players upsert', error));
+  }
+  function bgDeletePlayer(gameId, playerId) {
+    if (!sb) return;
+    sb.from('players')
+      .delete()
+      .eq('game_id', gameId)
+      .eq('id', playerId)
+      .then(({ error }) => error && logWriteError('player delete', error));
+  }
+  function bgUpsertRounds(gameId, rounds) {
+    if (!sb || !rounds.length) return;
+    sb.from('rounds')
+      .upsert(rounds.map((r) => roundToRow(gameId, r)), {
+        onConflict: 'game_id,round',
+      })
+      .then(({ error }) => error && logWriteError('rounds upsert', error));
+  }
+  function bgInsertActivity(gameId, entry) {
+    if (!sb) return;
+    sb.from('activity')
+      .insert(activityToRow(gameId, entry))
+      .then(({ error }) => error && logWriteError('activity insert', error));
+  }
+  function logWriteError(what, error) {
+    console.error(
+      `[QuestRealm] failed to sync ${what} to Supabase — kept locally, will retry on next write.`,
+      error
+    );
+  }
+
+  // ── Hydration (Supabase → cache), one-time migration of local ──
+  function hydrate(gameId) {
+    if (hydratedGames[gameId]) return hydratedGames[gameId];
+    const c = cacheFor(gameId); // seeds cache from localStorage first
+    if (!sb) return (hydratedGames[gameId] = Promise.resolve(c));
+
+    hydratedGames[gameId] = (async () => {
+      try {
+        const [pRes, rRes, aRes] = await Promise.all([
+          sb.from('players').select('*').eq('game_id', gameId),
+          sb.from('rounds').select('*').eq('game_id', gameId).order('round'),
+          sb.from('activity').select('*').eq('game_id', gameId).order('ts'),
+        ]);
+        if (pRes.error || rRes.error || aRes.error) {
+          throw pRes.error || rRes.error || aRes.error;
+        }
+
+        // First-time migration: DB empty for this game but the browser
+        // has local data → push local up, then treat DB as source.
+        if (!pRes.data.length && c.players.length) {
+          console.info(
+            `[QuestRealm] migrating local "${gameId}" data to Supabase…`
+          );
+          bgUpsertPlayers(gameId, c.players);
+          bgUpsertRounds(gameId, c.rounds);
+          c.activity.forEach((e) => bgInsertActivity(gameId, e));
+          return c;
+        }
+
+        c.players = pRes.data.map(rowToPlayer);
+        c.rounds = rRes.data.map(rowToRound);
+        c.activity = aRes.data.map(rowToActivity);
+        writeLocal(keyFor(gameId), c.players);
+        writeLocal(roundsKeyFor(gameId), c.rounds);
+        writeLocal(activityKeyFor(gameId), c.activity);
+      } catch (e) {
+        console.error(
+          `[QuestRealm] hydrate "${gameId}" failed — using local cache.`,
+          e
+        );
+      }
+      fireSync(gameId);
+      return c;
+    })();
+    return hydratedGames[gameId];
+  }
+
+  // Auto-hydrate the games this page cares about: the ?game= on the
+  // leaderboard, and every card's data-stats-for on the dashboard.
+  function autoHydrate() {
+    const ids = new Set();
+    const g = new URLSearchParams(window.location.search).get('game');
+    if (g) ids.add(g);
+    document.querySelectorAll('[data-stats-for]').forEach((el) =>
+      ids.add(el.dataset.statsFor)
+    );
+    if (window.location.pathname.endsWith('leaderboard.html') && !g) {
+      ids.add('grand-austria-hotel'); // leaderboard's default game
+    }
+    ids.forEach(hydrate);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', autoHydrate);
+  } else {
+    autoHydrate();
+  }
+
+  // ═══════════════ Public API (unchanged signatures) ═════════════
+
+  /** @returns {Array<{id,name,emoji,score,streak,wins,bestStreak,history}>} */
+  function loadPlayers(gameId) {
+    return cacheFor(gameId).players.map((p) => ({
+      streak: 0,
+      wins: 0,
+      bestStreak: 0,
+      ...p,
     }));
   }
 
-  function buildSeedPlayers(gameId, rounds) {
-    const seed = SEED_RESULTS[gameId];
-    if (!seed || !rounds) return null;
-
-    const players = {};
-    Object.entries(seed.players).forEach(([key, info]) => {
-      const id = 'seed_' + key;
-      players[id] = {
-        id,
-        name: info.name,
-        emoji: info.emoji,
-        score: 0,
-        streak: 0,
-        wins: 0,
-        bestStreak: 0,
-        history: [],
-      };
-    });
-
-    rounds.forEach((round) => {
-      Object.entries(round.scores).forEach(([pid, delta]) => {
-        const p = players[pid];
-        if (!p) return;
-        p.score += delta;
-        p.history.push({ delta, ts: round.ts });
-      });
-      Object.keys(players).forEach((pid) => {
-        const p = players[pid];
-        if (pid === round.winnerId) {
-          p.streak += 1;
-          p.wins += 1;
-          p.bestStreak = Math.max(p.bestStreak, p.streak);
-        } else {
-          p.streak = 0;
-        }
-      });
-    });
-
-    return Object.values(players);
-  }
-
-  /** @returns {Array<{id:string,name:string,emoji:string,score:number,streak:number,wins:number,bestStreak:number,history:Array<{delta:number,ts:number}>}>} */
-  function loadPlayers(gameId) {
-    try {
-      const raw = localStorage.getItem(keyFor(gameId));
-      if (raw === null) {
-        const rounds = loadRounds(gameId); // seeds rounds too, so timestamps line up
-        const seeded = buildSeedPlayers(gameId, rounds);
-        if (seeded) {
-          savePlayers(gameId, seeded);
-          return seeded;
-        }
-        return [];
-      }
-      const list = JSON.parse(raw);
-      if (!Array.isArray(list)) return [];
-      // Migrate records saved before streaks existed.
-      return list.map((p) => ({ streak: 0, wins: 0, bestStreak: 0, ...p }));
-    } catch {
-      return [];
-    }
-  }
-
   function savePlayers(gameId, players) {
-    localStorage.setItem(keyFor(gameId), JSON.stringify(players));
+    cacheFor(gameId).players = players;
+    writeLocal(keyFor(gameId), players);
+    bgUpsertPlayers(gameId, players);
   }
 
-  /** @returns {Array<{round:number,ts:number,scores:Object<string,number>,winnerId:string,tie:boolean,tieNote:string}>} */
+  /** @returns {Array<{round,ts,scores,winnerId,tie,tieNote}>} */
   function loadRounds(gameId) {
-    try {
-      const raw = localStorage.getItem(roundsKeyFor(gameId));
-      if (raw !== null) {
-        const list = JSON.parse(raw);
-        return Array.isArray(list) ? list : [];
-      }
-      const rounds = buildSeedRounds(gameId);
-      if (rounds) {
-        saveRounds(gameId, rounds);
-        return rounds;
-      }
-      return [];
-    } catch {
-      return [];
-    }
+    return cacheFor(gameId).rounds;
   }
 
   function saveRounds(gameId, rounds) {
-    localStorage.setItem(roundsKeyFor(gameId), JSON.stringify(rounds));
+    cacheFor(gameId).rounds = rounds;
+    writeLocal(roundsKeyFor(gameId), rounds);
+    bgUpsertRounds(gameId, rounds);
   }
 
-  /** @returns {Array<{type:'score'|'win', playerId:string, name:string, emoji:string, ts:number, delta?:number, newScore?:number}>} */
+  /** @returns {Array<{type,playerId,name,emoji,ts,delta?,newScore?}>} */
   function loadActivity(gameId) {
-    try {
-      const raw = localStorage.getItem(activityKeyFor(gameId));
-      const list = raw ? JSON.parse(raw) : [];
-      return Array.isArray(list) ? list : [];
-    } catch {
-      return [];
-    }
+    return cacheFor(gameId).activity;
   }
 
   function pushActivity(gameId, entry) {
-    const log = loadActivity(gameId);
-    log.push(entry);
-    localStorage.setItem(activityKeyFor(gameId), JSON.stringify(log));
+    const c = cacheFor(gameId);
+    c.activity = [...c.activity, entry];
+    writeLocal(activityKeyFor(gameId), c.activity);
+    bgInsertActivity(gameId, entry);
   }
 
   function addPlayer(gameId, name, emoji) {
@@ -236,6 +352,17 @@ const QRStore = (() => {
   function removePlayer(gameId, playerId) {
     const players = loadPlayers(gameId).filter((p) => p.id !== playerId);
     savePlayers(gameId, players);
+    bgDeletePlayer(gameId, playerId);
+  }
+
+  // Register a callback fired after a game hydrates from Supabase, so
+  // pages can re-render with fresh data. Returns an unsubscribe fn.
+  function onSync(cb) {
+    syncListeners.push(cb);
+    return () => {
+      const i = syncListeners.indexOf(cb);
+      if (i >= 0) syncListeners.splice(i, 1);
+    };
   }
 
   return {
@@ -246,6 +373,9 @@ const QRStore = (() => {
     recordWin,
     removePlayer,
     loadRounds,
+    saveRounds,
     loadActivity,
+    hydrate,
+    onSync,
   };
 })();

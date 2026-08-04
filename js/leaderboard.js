@@ -15,7 +15,7 @@
       tagline: 'Vienna, at the dawn of the modern age. Serve the finest coffee, charm the Emperor, and etch your name into the ledger.',
       theme: 'theme-gah',
       scoreUnit: 'VP',
-      footer: 'Scores are kept in this browser’s ledger · Grand Austria Hotel themed board',
+      footer: 'Scores are kept in the shared ledger · Grand Austria Hotel themed board',
     },
   };
 
@@ -464,4 +464,9 @@
 
   // ── First paint ───────────────────────────────────────────────
   render();
+  // Re-render once this game's data hydrates from Supabase (cache-first:
+  // the first paint above shows cached/local data instantly).
+  QRStore.onSync((syncedGame) => {
+    if (syncedGame === gameId) render();
+  });
 })();

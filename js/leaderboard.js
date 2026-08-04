@@ -259,7 +259,6 @@
               <span class="row-score-main" data-score>${p.score}</span>
               <span class="row-score-sub">${fmtRatio(perGame(p))} ${game.scoreUnit}/game</span>
             </span>
-            <button class="row-remove" data-remove="${p.id}" title="Remove ${escapeHtml(p.name)}" aria-label="Remove ${escapeHtml(p.name)}">✕</button>
           </li>`;
       })
       .join('');
@@ -498,18 +497,6 @@
     const player = QRStore.addPlayer(gameId, name, selectedEmoji);
     closeDialog(dlgGuest);
     render({ highlightId: player.id, animate: true });
-  });
-
-  // ── Remove guest ──────────────────────────────────────────────
-  ledgerEl.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-remove]');
-    if (!btn) return;
-    const player = QRStore.loadPlayers(gameId).find((p) => p.id === btn.dataset.remove);
-    if (!player) return;
-    if (confirm(`Strike ${player.name} from the ledger? Their score will be lost.`)) {
-      QRStore.removePlayer(gameId, player.id);
-      render({ animate: true });
-    }
   });
 
   function showError(el, msg) {

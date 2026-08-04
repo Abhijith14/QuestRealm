@@ -1125,9 +1125,11 @@ body.leaving { animation: curtain-out 0.45s ease forwards; }
 .theme-gah .row-rank { color: var(--gah-ink-soft); }
 .theme-gah .ledger-row.rank-1 .row-rank { color: var(--gah-red); }
 .theme-gah .row-score-main { color: var(--gah-red); }
+/* Ledger rows sit on the cream panel — keep sub-text dark & legible. */
 .theme-gah .row-sub,
-.theme-gah .row-score-sub,
-.theme-gah .podium-sub { color: var(--gah-ink-soft); }
+.theme-gah .row-score-sub { color: var(--gah-ink-soft); }
+/* The podium sits on the dark teal box — sub-text must be light. */
+.theme-gah .podium-sub { color: rgba(243, 231, 207, 0.82); }
 
 .theme-gah .row-bar-track { background: rgba(58, 37, 23, 0.14); }
 .theme-gah .row-bar {

@@ -349,6 +349,74 @@ const QRStore = (() => {
     return winner;
   }
 
+  // Record one whole game at once: `entries` is [{playerId, score}] for the
+  // guests who actually played (anyone omitted simply sat that game out).
+  // The winner is decided by the high score; on a tie at the top the caller
+  // passes the agreed `winnerId` (+ an optional `tieNote`). Applies each
+  // participant's score, bumps the winner's streak/wins, resets the other
+  // participants' streaks (non-participants are left untouched), writes the
+  // round to the Score Book, and logs one activity entry.
+  function recordGame(gameId, entries, winnerId, tieNote = '') {
+    const players = loadPlayers(gameId);
+    const byId = Object.fromEntries(players.map((p) => [p.id, p]));
+    const participants = entries.filter(
+      (e) => byId[e.playerId] && Number.isFinite(e.score)
+    );
+    if (!participants.length) return null;
+    const winner = byId[winnerId];
+    if (!winner || !participants.some((e) => e.playerId === winnerId)) return null;
+
+    const ts = Date.now();
+    const maxScore = Math.max(...participants.map((e) => e.score));
+    const tie = participants.filter((e) => e.score === maxScore).length > 1;
+
+    // Apply each participant's score for this game.
+    const scores = {};
+    participants.forEach(({ playerId, score }) => {
+      const p = byId[playerId];
+      p.score += score;
+      p.history.push({ delta: score, ts });
+      scores[playerId] = score;
+    });
+
+    // Streaks: winner up, other players IN this game reset. Sitters untouched.
+    const played = new Set(participants.map((e) => e.playerId));
+    players.forEach((p) => {
+      if (!played.has(p.id)) return;
+      if (p.id === winnerId) {
+        p.streak += 1;
+        p.wins += 1;
+        p.bestStreak = Math.max(p.bestStreak, p.streak);
+      } else {
+        p.streak = 0;
+      }
+    });
+    savePlayers(gameId, players);
+
+    // Add the round to the Score Book.
+    const rounds = loadRounds(gameId);
+    const nextRound = rounds.reduce((m, r) => Math.max(m, r.round), 0) + 1;
+    const round = {
+      round: nextRound,
+      ts,
+      scores,
+      winnerId,
+      tie,
+      tieNote: tie ? tieNote : '',
+    };
+    saveRounds(gameId, [...rounds, round]);
+
+    pushActivity(gameId, {
+      type: 'game',
+      playerId: winnerId,
+      name: winner.name,
+      emoji: winner.emoji,
+      ts,
+    });
+
+    return { winner, round, tie };
+  }
+
   function removePlayer(gameId, playerId) {
     const players = loadPlayers(gameId).filter((p) => p.id !== playerId);
     savePlayers(gameId, players);
@@ -371,6 +439,7 @@ const QRStore = (() => {
     addPlayer,
     addScore,
     recordWin,
+    recordGame,
     removePlayer,
     loadRounds,
     saveRounds,

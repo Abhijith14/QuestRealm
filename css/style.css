@@ -471,6 +471,14 @@ body.leaving { animation: curtain-out 0.45s ease forwards; }
 }
 .podium-score { color: var(--gold-bright); font-weight: 600; font-size: 1.15rem; }
 .podium-score small { color: var(--ink-dim); font-size: 0.75em; letter-spacing: 0.08em; }
+.podium-sub {
+  margin-top: 0.2rem;
+  font-size: 0.68rem;
+  color: var(--ink-dim);
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  max-width: 15ch;
+}
 
 .podium-pillar {
   width: 100%;
@@ -570,11 +578,26 @@ body.leaving { animation: curtain-out 0.45s ease forwards; }
 .row-emoji { font-size: 1.5rem; text-align: center; }
 
 .row-name {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.12rem;
+  min-width: 0;
+}
+.row-name-main {
   font-weight: 600;
   font-size: 1.15rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.row-sub {
+  font-size: 0.68rem;
+  color: var(--ink-dim);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .row-bar-track {
@@ -593,11 +616,25 @@ body.leaving { animation: curtain-out 0.45s ease forwards; }
 }
 
 .row-score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.05rem;
+}
+.row-score-main {
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 1.15rem;
   color: var(--gold-bright);
-  text-align: right;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.row-score-sub {
+  font-size: 0.62rem;
+  color: var(--ink-dim);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
@@ -935,6 +972,69 @@ body.leaving { animation: curtain-out 0.45s ease forwards; }
 }
 .field select option { background: #2b121b; color: var(--ink); }
 
+/* ── Record a Game: per-player score rows ─────────────────────── */
+.modal-card-wide { width: min(94vw, 460px); }
+
+.game-players-head {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin-bottom: 0.4rem;
+  padding: 0 0.2rem;
+}
+.game-players { display: flex; flex-direction: column; gap: 0.4rem; }
+.game-player {
+  display: grid;
+  grid-template-columns: 1.4rem 1.8rem 1fr 5.2rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 10px;
+  background: rgba(246, 236, 216, 0.05);
+  border: 1px solid rgba(212, 169, 68, 0.18);
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+.game-player .gp-check { width: 1.1rem; height: 1.1rem; accent-color: var(--gold); cursor: pointer; }
+.game-player .gp-emoji { font-size: 1.3rem; text-align: center; }
+.game-player .gp-name {
+  font-size: 1.02rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.game-player .gp-score {
+  width: 100%;
+  font-size: 1.02rem;
+  text-align: right;
+  padding: 0.4rem 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+.game-player.sat-out { opacity: 0.45; }
+.game-player.sat-out .gp-score { background: rgba(246, 236, 216, 0.02); }
+
+.tiebreak-block {
+  margin-top: 1rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 12px;
+  background: rgba(212, 169, 68, 0.08);
+  border: 1px dashed rgba(212, 169, 68, 0.5);
+}
+.tiebreak-block select { margin-bottom: 0.5rem; }
+
+.theme-gah .game-player { background: rgba(58, 37, 23, 0.05); border-color: rgba(109, 84, 60, 0.3); }
+.theme-gah .game-player .gp-name { color: var(--gah-ink); }
+.theme-gah .game-player .gp-check { accent-color: var(--gah-red); }
+.theme-gah .game-players-head { color: var(--gah-ink-soft); }
+.theme-gah .tiebreak-block {
+  background: rgba(158, 47, 56, 0.08);
+  border-color: rgba(158, 47, 56, 0.5);
+}
+
 .emoji-grid {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
@@ -1024,7 +1124,10 @@ body.leaving { animation: curtain-out 0.45s ease forwards; }
 .theme-gah .row-name { color: var(--gah-ink); }
 .theme-gah .row-rank { color: var(--gah-ink-soft); }
 .theme-gah .ledger-row.rank-1 .row-rank { color: var(--gah-red); }
-.theme-gah .row-score { color: var(--gah-red); }
+.theme-gah .row-score-main { color: var(--gah-red); }
+.theme-gah .row-sub,
+.theme-gah .row-score-sub,
+.theme-gah .podium-sub { color: var(--gah-ink-soft); }
 
 .theme-gah .row-bar-track { background: rgba(58, 37, 23, 0.14); }
 .theme-gah .row-bar {
@@ -1208,12 +1311,13 @@ body.leaving { animation: curtain-out 0.45s ease forwards; }
 
   .ledger { padding: 1.2rem 0.7rem 1.3rem; border-radius: 12px; }
   .ledger-row {
-    grid-template-columns: 1.6rem 1.9rem minmax(5rem, 1fr) 3rem 1.5rem;
-    gap: 0.45rem;
+    grid-template-columns: 1.4rem 1.7rem minmax(4.5rem, 1fr) 4.6rem 1.4rem;
+    gap: 0.4rem;
     padding: 0.55rem 0.6rem;
   }
   .row-bar-track { display: none; }
-  .row-name { font-size: 1.05rem; }
+  .row-name-main { font-size: 1.05rem; }
+  .row-sub, .row-score-sub { font-size: 0.6rem; }
   .streak-pill { font-size: 0.62rem; padding: 0.08rem 0.4rem; margin-left: 0.35rem; }
 
   .emoji-grid { grid-template-columns: repeat(6, 1fr); }

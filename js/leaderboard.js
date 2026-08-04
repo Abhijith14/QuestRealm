@@ -64,17 +64,16 @@
   const activityEmpty = document.getElementById('activity-empty');
 
   const dlgGuest = document.getElementById('dlg-guest');
-  const dlgScore = document.getElementById('dlg-score');
-  const dlgWin = document.getElementById('dlg-win');
+  const dlgGame = document.getElementById('dlg-game');
   const formGuest = document.getElementById('form-guest');
-  const formScore = document.getElementById('form-score');
-  const formWin = document.getElementById('form-win');
-  const winSelect = document.getElementById('win-player');
+  const formGame = document.getElementById('form-game');
+  const gamePlayersEl = document.getElementById('game-players');
+  const tiebreakBlock = document.getElementById('tiebreak-block');
+  const tiebreakWinner = document.getElementById('tiebreak-winner');
+  const tiebreakNote = document.getElementById('tiebreak-note');
+  const gameError = document.getElementById('game-error');
   const guestNameInput = document.getElementById('guest-name');
   const guestError = document.getElementById('guest-error');
-  const scoreError = document.getElementById('score-error');
-  const scoreSelect = document.getElementById('score-player');
-  const scoreValue = document.getElementById('score-value');
   const emojiGrid = document.getElementById('emoji-grid');
 
   const EMOJIS = [
@@ -89,6 +88,14 @@
     [...QRStore.loadPlayers(gameId)].sort(
       (a, b) => b.score - a.score || a.name.localeCompare(b.name)
     );
+
+  // Per-game stats. A guest's history holds one entry per game they played,
+  // so its length is their games-played count.
+  const gamesPlayed = (p) => (p.history ? p.history.length : 0);
+  const perGame = (p) => (gamesPlayed(p) ? p.score / gamesPlayed(p) : null);
+  const winRate = (p) => (gamesPlayed(p) ? p.wins / gamesPlayed(p) : null);
+  const fmtRatio = (n) => (n == null ? '—' : n.toFixed(1));
+  const fmtPct = (n) => (n == null ? '—' : Math.round(n * 100) + '%');
 
   function render({ highlightId = null, animate = false, sparkleChars = ['✦'] } = {}) {
     const players = sorted();
@@ -167,6 +174,14 @@
         const when = new Date(e.ts).toLocaleString(undefined, {
           month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
         });
+        if (e.type === 'game') {
+          return `
+            <li class="activity-row activity-win">
+              <span class="activity-emoji" aria-hidden="true">🏆</span>
+              <span class="activity-text"><strong>${escapeHtml(e.name)}</strong> won a game</span>
+              <span class="activity-time">${when}</span>
+            </li>`;
+        }
         if (e.type === 'win') {
           return `
             <li class="activity-row activity-win">
@@ -209,6 +224,7 @@
               <span class="podium-emoji">${p.emoji}</span>
               <span class="podium-name">${escapeHtml(p.name)}</span>
               <span class="podium-score">${p.score} <small>${game.scoreUnit}</small></span>
+              <span class="podium-sub">${fmtRatio(perGame(p))} ${game.scoreUnit}/game · ${p.wins} win${p.wins === 1 ? '' : 's'} · ${fmtPct(winRate(p))}</span>
               ${streakBadge(p)}
             </div>
             <div class="podium-pillar">
@@ -232,11 +248,17 @@
           <li class="ledger-row ${rankClass}" data-pid="${p.id}">
             <span class="row-rank">${idx + 1}</span>
             <span class="row-emoji">${p.emoji}</span>
-            <span class="row-name">${escapeHtml(p.name)}${streakBadge(p)}</span>
+            <span class="row-name">
+              <span class="row-name-main">${escapeHtml(p.name)}${streakBadge(p)}</span>
+              <span class="row-sub">🏆 ${p.wins} win${p.wins === 1 ? '' : 's'} · ${fmtPct(winRate(p))} · ${gamesPlayed(p)} game${gamesPlayed(p) === 1 ? '' : 's'}</span>
+            </span>
             <span class="row-bar-track" aria-hidden="true">
               <span class="row-bar" style="width:${pct}%"></span>
             </span>
-            <span class="row-score" data-score>${p.score}</span>
+            <span class="row-score">
+              <span class="row-score-main" data-score>${p.score}</span>
+              <span class="row-score-sub">${fmtRatio(perGame(p))} ${game.scoreUnit}/game</span>
+            </span>
             <button class="row-remove" data-remove="${p.id}" title="Remove ${escapeHtml(p.name)}" aria-label="Remove ${escapeHtml(p.name)}">✕</button>
           </li>`;
       })
@@ -282,16 +304,6 @@
         );
       }
     });
-  }
-
-  function countUp(el, from, to, duration = 900) {
-    const start = performance.now();
-    (function step(now) {
-      const p = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - p, 3);
-      el.textContent = Math.round(from + (to - from) * eased);
-      if (p < 1) requestAnimationFrame(step);
-    })(start);
   }
 
   function sparkle(row, chars = ['✦']) {
@@ -357,45 +369,115 @@
     guestNameInput.focus();
   });
 
-  document.getElementById('btn-add-score').addEventListener('click', () => {
+  // ── Record a Game ─────────────────────────────────────────────
+  // One dialog captures every player's score for a single game. The high
+  // score is crowned automatically; a tie at the top asks who took the
+  // tiebreak. Players left unchecked simply sat that game out.
+  function buildGameDialog() {
     const players = sorted();
-    if (!players.length) {
-      // No one to score yet — route to adding a guest instead.
+    gamePlayersEl.innerHTML = players
+      .map(
+        (p) => `
+        <label class="game-player" data-row="${p.id}">
+          <input type="checkbox" class="gp-check" data-id="${p.id}" checked>
+          <span class="gp-emoji">${p.emoji}</span>
+          <span class="gp-name">${escapeHtml(p.name)}</span>
+          <input type="number" class="gp-score" data-id="${p.id}" step="1" inputmode="numeric" placeholder="—" aria-label="${escapeHtml(p.name)} score">
+        </label>`
+      )
+      .join('');
+    tiebreakBlock.hidden = true;
+    gameError.hidden = true;
+  }
+
+  document.getElementById('btn-record-game').addEventListener('click', () => {
+    if (!sorted().length) {
+      // No guests yet — route to adding one first.
       openDialog(dlgGuest);
       guestNameInput.focus();
       return;
     }
-    scoreSelect.innerHTML = players
-      .map((p) => `<option value="${p.id}">${p.emoji} ${escapeHtml(p.name)} — ${p.score} ${game.scoreUnit}</option>`)
-      .join('');
-    formScore.reset();
-    scoreError.hidden = true;
-    openDialog(dlgScore);
-    scoreValue.focus();
+    formGame.reset();
+    buildGameDialog();
+    openDialog(dlgGame);
   });
 
-  document.getElementById('btn-crown-win').addEventListener('click', () => {
-    const players = sorted();
-    if (!players.length) {
-      openDialog(dlgGuest);
-      guestNameInput.focus();
-      return;
-    }
-    winSelect.innerHTML = players
-      .map((p) => `<option value="${p.id}">${p.emoji} ${escapeHtml(p.name)}${p.streak ? ` — 🔥 ${p.streak}` : ''}</option>`)
-      .join('');
-    formWin.reset();
-    openDialog(dlgWin);
-    winSelect.focus();
+  // A checked-off guest keeps their score input; unchecking greys it out.
+  gamePlayersEl.addEventListener('change', (e) => {
+    const check = e.target.closest('.gp-check');
+    if (!check) return;
+    const row = check.closest('.game-player');
+    const scoreInput = row.querySelector('.gp-score');
+    row.classList.toggle('sat-out', !check.checked);
+    scoreInput.disabled = !check.checked;
+    if (!check.checked) scoreInput.value = '';
   });
 
-  // ── Crown the victor (win streaks) ────────────────────────────
-  formWin.addEventListener('submit', (e) => {
+  // Collect the participants (checked + a real number entered).
+  function collectParticipants() {
+    return [...gamePlayersEl.querySelectorAll('.game-player')].reduce((acc, row) => {
+      const id = row.querySelector('.gp-check').dataset.id;
+      const checked = row.querySelector('.gp-check').checked;
+      const raw = row.querySelector('.gp-score').value.trim();
+      if (checked && raw !== '') {
+        const score = parseInt(raw, 10);
+        if (Number.isFinite(score)) acc.push({ playerId: id, score });
+      }
+      return acc;
+    }, []);
+  }
+
+  formGame.addEventListener('submit', (e) => {
     e.preventDefault();
-    const winner = QRStore.recordWin(gameId, winSelect.value);
-    if (!winner) return;
-    closeDialog(dlgWin);
-    render({ highlightId: winner.id, animate: true, sparkleChars: ['👑', '✦', '✦'] });
+    const participants = collectParticipants();
+
+    if (participants.length < 2) {
+      showError(gameError, 'Enter a score for at least two guests who played.');
+      return;
+    }
+    // Every checked guest must have a score.
+    const missing = [...gamePlayersEl.querySelectorAll('.game-player')].some((row) => {
+      const checked = row.querySelector('.gp-check').checked;
+      return checked && row.querySelector('.gp-score').value.trim() === '';
+    });
+    if (missing) {
+      showError(gameError, 'Give every checked guest a score, or uncheck the ones who sat out.');
+      return;
+    }
+
+    const maxScore = Math.max(...participants.map((p) => p.score));
+    const tied = participants.filter((p) => p.score === maxScore);
+
+    let winnerId;
+    let tieNote = '';
+    if (tied.length > 1) {
+      // Reveal the tiebreak chooser on first submit; finalise on the next.
+      if (tiebreakBlock.hidden) {
+        const byId = Object.fromEntries(sorted().map((p) => [p.id, p]));
+        tiebreakWinner.innerHTML = tied
+          .map((t) => {
+            const p = byId[t.playerId];
+            return `<option value="${t.playerId}">${p.emoji} ${escapeHtml(p.name)} — ${t.score} ${game.scoreUnit}</option>`;
+          })
+          .join('');
+        tiebreakBlock.hidden = false;
+        gameError.hidden = true;
+        tiebreakWinner.focus();
+        return;
+      }
+      winnerId = tiebreakWinner.value;
+      tieNote = tiebreakNote.value.trim();
+    } else {
+      winnerId = tied[0].playerId;
+    }
+
+    const result = QRStore.recordGame(gameId, participants, winnerId, tieNote);
+    if (!result) {
+      showError(gameError, 'Something went wrong recording that game. Please try again.');
+      return;
+    }
+    closeDialog(dlgGame);
+    render({ highlightId: result.winner.id, animate: true, sparkleChars: ['👑', '✦', '✦'] });
   });
 
   // ── Add guest ─────────────────────────────────────────────────
@@ -416,27 +498,6 @@
     const player = QRStore.addPlayer(gameId, name, selectedEmoji);
     closeDialog(dlgGuest);
     render({ highlightId: player.id, animate: true });
-  });
-
-  // ── Add score ─────────────────────────────────────────────────
-  formScore.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const playerId = scoreSelect.value;
-    const delta = parseInt(scoreValue.value, 10);
-    if (!playerId || Number.isNaN(delta)) {
-      showError(scoreError, 'Pick a guest and enter a whole number of points.');
-      return;
-    }
-    const before = QRStore.loadPlayers(gameId).find((p) => p.id === playerId);
-    const oldScore = before ? before.score : 0;
-    const updated = QRStore.addScore(gameId, playerId, delta);
-    if (!updated) return;
-
-    closeDialog(dlgScore);
-    render({ highlightId: playerId, animate: true });
-
-    const scoreEl = ledgerEl.querySelector(`[data-pid="${playerId}"] [data-score]`);
-    if (scoreEl) countUp(scoreEl, oldScore, updated.score);
   });
 
   // ── Remove guest ──────────────────────────────────────────────

@@ -42,11 +42,8 @@
   <main class="board-main">
 
     <section class="actions reveal" aria-label="Actions">
-      <button class="btn btn-gold" id="btn-add-score">
-        <span class="btn-icon">✦</span> Add Score
-      </button>
-      <button class="btn btn-outline" id="btn-crown-win">
-        <span class="btn-icon">👑</span> Crown the Victor
+      <button class="btn btn-gold" id="btn-record-game">
+        <span class="btn-icon">🎲</span> Record a Game
       </button>
       <button class="btn btn-outline" id="btn-add-guest">
         <span class="btn-icon">＋</span> Add Guest
@@ -133,43 +130,30 @@
     </form>
   </dialog>
 
-  <!-- ══════════ Crown the Victor dialog ══════════ -->
-  <dialog class="modal" id="dlg-win">
-    <form method="dialog" class="modal-card" id="form-win">
+  <!-- ══════════ Record a Game dialog ══════════ -->
+  <dialog class="modal" id="dlg-game">
+    <form method="dialog" class="modal-card modal-card-wide" id="form-game">
       <button type="button" class="modal-close" data-close aria-label="Close">✕</button>
-      <h3 class="modal-title">Crown the Victor</h3>
+      <h3 class="modal-title">Record a Game</h3>
       <svg viewBox="0 0 300 24" class="flourish small" aria-hidden="true"><use href="#flourish"></use></svg>
+      <p class="field-hint centered">Enter each guest's score for this game. Uncheck anyone who sat it out. The highest score is crowned automatically.</p>
 
-      <label class="field">
-        <span class="field-label">Who won the game?</span>
-        <select id="win-player" required></select>
-      </label>
-      <p class="field-hint centered">The victor's win streak climbs by one — everyone else's streak resets.</p>
+      <div class="field">
+        <div class="game-players-head">
+          <span>Guest</span>
+          <span>Score</span>
+        </div>
+        <div class="game-players" id="game-players"></div>
+      </div>
 
-      <button type="submit" class="btn btn-gold btn-wide">Bestow the Emperor's Favour</button>
-    </form>
-  </dialog>
+      <div class="field tiebreak-block" id="tiebreak-block" hidden>
+        <span class="field-label">🤝 Tie at the top — who took the tiebreak?</span>
+        <select id="tiebreak-winner"></select>
+        <input type="text" id="tiebreak-note" maxlength="120" placeholder="How was it resolved? (optional)" autocomplete="off">
+      </div>
 
-  <!-- ══════════ Add Score dialog ══════════ -->
-  <dialog class="modal" id="dlg-score">
-    <form method="dialog" class="modal-card" id="form-score">
-      <button type="button" class="modal-close" data-close aria-label="Close">✕</button>
-      <h3 class="modal-title">Award Points</h3>
-      <svg viewBox="0 0 300 24" class="flourish small" aria-hidden="true"><use href="#flourish"></use></svg>
-
-      <label class="field">
-        <span class="field-label">Guest</span>
-        <select id="score-player" required></select>
-      </label>
-
-      <label class="field">
-        <span class="field-label">Points to add</span>
-        <input type="number" id="score-value" step="1" placeholder="e.g. 10" required>
-        <span class="field-hint">Added to the current total. Negative values correct mistakes.</span>
-      </label>
-
-      <p class="form-error" id="score-error" hidden></p>
-      <button type="submit" class="btn btn-gold btn-wide">Add to the tally</button>
+      <p class="form-error" id="game-error" hidden></p>
+      <button type="submit" class="btn btn-gold btn-wide" id="game-submit">Record the Game</button>
     </form>
   </dialog>
 

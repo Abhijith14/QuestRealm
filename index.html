@@ -59,7 +59,7 @@
         <div class="card-body">
           <h2 class="card-title">Grand Austria Hotel</h2>
           <p class="card-flavor">Vienna, at the turn of the century. Whose café shall the Emperor favour?</p>
-          <p class="card-stats" data-stats-for="grand-austria-hotel">No guests registered yet</p>
+          <p class="card-stats" data-stats-for="grand-austria-hotel">Fetching the ledger…</p>
           <span class="card-cta">Enter the Hotel <span class="cta-arrow">→</span></span>
         </div>
       </a>
@@ -79,7 +79,7 @@
 
   <footer class="lobby-footer reveal">
     <svg viewBox="0 0 300 24" class="flourish" aria-hidden="true"><use href="#flourish"></use></svg>
-    <p>Scores live in this browser for now — a proper vault (database) is on the roadmap.</p>
+    <p>Scores are kept in a shared ledger — every device sees the same standings.</p>
   </footer>
 
   <!-- Shared SVG defs -->
@@ -96,7 +96,7 @@
     </defs>
   </svg>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/storage.js"></script>
   <script src="js/dashboard.js"></script>

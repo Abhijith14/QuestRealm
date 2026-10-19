@@ -5,6 +5,12 @@
   function renderTeasers() {
     document.querySelectorAll('[data-stats-for]').forEach((el) => {
       const gameId = el.dataset.statsFor;
+      const status = QRStore.status(gameId);
+      if (status !== 'ready') {
+        el.textContent =
+          status === 'loading' ? 'Fetching the ledger…' : 'Couldn’t reach the ledger — try refreshing';
+        return;
+      }
       const players = QRStore.loadPlayers(gameId);
       if (!players.length) {
         el.textContent = 'No guests registered yet';
@@ -26,7 +32,7 @@
   }
 
   renderTeasers();
-  // Re-render teasers as each game hydrates from Supabase (cache-first).
+  // Re-render teasers as each game's data arrives from Supabase.
   QRStore.onSync(renderTeasers);
 
   // Staggered entrance reveal.

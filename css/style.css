@@ -395,6 +395,7 @@ body.leaving { animation: curtain-out 0.45s ease forwards; }
   transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease, color 0.25s ease;
 }
 .btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.45; cursor: wait; transform: none; box-shadow: none; }
 .btn-icon { margin-right: 0.3rem; }
 
 .btn-gold {
@@ -714,6 +715,9 @@ body.leaving { animation: curtain-out 0.45s ease forwards; }
   margin: 0.8rem 0 0.2rem;
 }
 .empty-sub { color: var(--ink-dim); font-style: italic; margin: 0 0 1.4rem; }
+
+/* ── Ledger loading / unreachable note ────────────────────────── */
+.sync-note { text-align: center; color: var(--ink-dim); font-style: italic; margin: 0 0 1.4rem; }
 
 /* ── Game History ─────────────────────────────────────────────── */
 .history { margin-top: 1.8rem; text-align: center; }

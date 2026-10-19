@@ -56,6 +56,9 @@
   const podiumWrap = document.getElementById('podium-wrap');
   const ledgerEl = document.getElementById('ledger-list');
   const emptyEl = document.getElementById('empty-state');
+  const syncNote = document.getElementById('sync-note');
+  const btnRecordGame = document.getElementById('btn-record-game');
+  const btnAddGuest = document.getElementById('btn-add-guest');
 
   const historyToggle = document.getElementById('history-toggle');
   const historyPanel = document.getElementById('history-panel');
@@ -100,8 +103,20 @@
   function render({ highlightId = null, animate = false, sparkleChars = ['✦'] } = {}) {
     const players = sorted();
     const hasPlayers = players.length > 0;
+    const status = QRStore.status(gameId);
+    const ready = status === 'ready';
 
-    emptyEl.hidden = hasPlayers;
+    // Until the ledger arrives from Supabase, say so — don't pretend
+    // the café is empty, and keep the action buttons locked.
+    syncNote.hidden = ready;
+    syncNote.textContent =
+      status === 'loading'
+        ? 'Fetching the ledger…'
+        : 'Couldn’t reach the ledger. Check your connection and refresh.';
+    btnRecordGame.disabled = !ready;
+    btnAddGuest.disabled = !ready;
+
+    emptyEl.hidden = hasPlayers || !ready;
     podiumWrap.style.display = hasPlayers ? '' : 'none';
 
     renderPodium(players);
@@ -355,7 +370,7 @@
     );
   });
 
-  document.getElementById('btn-add-guest').addEventListener('click', () => {
+  btnAddGuest.addEventListener('click', () => {
     formGuest.reset();
     guestError.hidden = true;
     openDialog(dlgGuest);
@@ -389,7 +404,8 @@
     gameError.hidden = true;
   }
 
-  document.getElementById('btn-record-game').addEventListener('click', () => {
+  btnRecordGame.addEventListener('click', () => {
+    if (QRStore.status(gameId) !== 'ready') return;
     if (!sorted().length) {
       // No guests yet — route to adding one first.
       openDialog(dlgGuest);
@@ -495,6 +511,10 @@
       return;
     }
     const player = QRStore.addPlayer(gameId, name, selectedEmoji);
+    if (!player) {
+      showError(guestError, 'The ledger hasn’t loaded yet — please try again in a moment.');
+      return;
+    }
     closeDialog(dlgGuest);
     render({ highlightId: player.id, animate: true });
   });
@@ -512,8 +532,8 @@
 
   // ── First paint ───────────────────────────────────────────────
   render();
-  // Re-render once this game's data hydrates from Supabase (cache-first:
-  // the first paint above shows cached/local data instantly).
+  // Re-render once this game's data arrives from Supabase (the first
+  // paint above shows the "Fetching the ledger…" state).
   QRStore.onSync((syncedGame) => {
     if (syncedGame === gameId) render();
   });

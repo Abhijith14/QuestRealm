@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   QuestRealm · storage layer  (Supabase-backed, cache-first)
+   QuestRealm · storage layer  (Supabase-backed)
 
    The public API is unchanged from the original localStorage version
    (loadPlayers / savePlayers / addPlayer / addScore / recordWin /
@@ -9,19 +9,17 @@
    • An in-memory cache holds each game's players / rounds / activity.
    • Reads are SYNCHRONOUS — they return straight from the cache, so
      the UI stays simple and renders instantly.
-   • On load we hydrate the cache from Supabase (source of truth) and
-     mirror it to localStorage, which doubles as an offline fallback
-     for the very first paint and for when the network is down.
-   • Writes update the cache + localStorage immediately (instant UI)
-     and are pushed to Supabase in the background (write-through).
+   • Every page load fetches fresh data from Supabase (the single
+     source of truth). Nothing is persisted in the browser, so every
+     device always sees the same, current ledger.
+   • Until that fetch lands, status(gameId) is 'loading' and writes
+     are refused, so a half-loaded page can never overwrite real data.
+   • Writes update the cache immediately (instant UI) and are pushed
+     to Supabase in the background (write-through).
    • Pages re-render when hydration lands via QRStore.onSync(cb).
    ═══════════════════════════════════════════════════════════════ */
 
 const QRStore = (() => {
-  const keyFor = (gameId) => `questrealm:${gameId}:players`;
-  const roundsKeyFor = (gameId) => `questrealm:${gameId}:rounds`;
-  const activityKeyFor = (gameId) => `questrealm:${gameId}:activity`;
-
   // ── Supabase client ───────────────────────────────────────────
   const cfg = window.QR_CONFIG || {};
   const sb =
@@ -30,7 +28,7 @@ const QRStore = (() => {
       : null;
   if (!sb) {
     console.warn(
-      '[QuestRealm] Supabase not configured — running on localStorage only.'
+      '[QuestRealm] Supabase not configured — the ledger cannot load.'
     );
   }
 
@@ -39,35 +37,38 @@ const QRStore = (() => {
   const cache = {};
   const syncListeners = [];
   const hydratedGames = {}; // gameId -> Promise (dedupes concurrent hydrations)
+  const statuses = {}; // gameId -> 'loading' | 'ready' | 'error'
 
   function cacheFor(gameId) {
     if (!cache[gameId]) {
-      cache[gameId] = {
-        players: readLocal(keyFor(gameId)) || [],
-        rounds: readLocal(roundsKeyFor(gameId)) || [],
-        activity: readLocal(activityKeyFor(gameId)) || [],
-      };
+      cache[gameId] = { players: [], rounds: [], activity: [] };
     }
     return cache[gameId];
   }
 
-  function readLocal(key) {
+  // Legacy: older versions of the site kept everything in localStorage.
+  // It is never used to display data — only read once, to upload a
+  // browser's old ledger if the database has nothing for that game.
+  function readLegacy(gameId, kind) {
     try {
-      const raw = localStorage.getItem(key);
-      if (raw === null) return null;
-      const val = JSON.parse(raw);
-      return Array.isArray(val) ? val : null;
+      const val = JSON.parse(localStorage.getItem(`questrealm:${gameId}:${kind}`));
+      return Array.isArray(val) ? val : [];
     } catch {
-      return null;
+      return [];
     }
   }
 
-  function writeLocal(key, val) {
-    try {
-      localStorage.setItem(key, JSON.stringify(val));
-    } catch {
-      /* storage full / disabled — cache still holds the data */
-    }
+  function status(gameId) {
+    return statuses[gameId] || 'loading';
+  }
+
+  // Writes are only allowed once the game's real data has loaded —
+  // otherwise e.g. recordGame would number a new round 1 and overwrite
+  // the real round 1 in the database.
+  function canWrite(gameId) {
+    if (status(gameId) === 'ready') return true;
+    console.warn(`[QuestRealm] "${gameId}" not loaded yet — write ignored.`);
+    return false;
   }
 
   function fireSync(gameId) {
@@ -174,16 +175,20 @@ const QRStore = (() => {
   }
   function logWriteError(what, error) {
     console.error(
-      `[QuestRealm] failed to sync ${what} to Supabase — kept locally, will retry on next write.`,
+      `[QuestRealm] failed to save ${what} to Supabase — it will be lost on refresh.`,
       error
     );
   }
 
-  // ── Hydration (Supabase → cache), one-time migration of local ──
-  function hydrate(gameId) {
-    if (hydratedGames[gameId]) return hydratedGames[gameId];
-    const c = cacheFor(gameId); // seeds cache from localStorage first
-    if (!sb) return (hydratedGames[gameId] = Promise.resolve(c));
+  // ── Hydration (Supabase → cache), on every page load ─────────
+  function hydrate(gameId, { force = false } = {}) {
+    if (hydratedGames[gameId] && !force) return hydratedGames[gameId];
+    const c = cacheFor(gameId);
+    if (!sb) {
+      statuses[gameId] = 'error';
+      fireSync(gameId);
+      return (hydratedGames[gameId] = Promise.resolve(c));
+    }
 
     hydratedGames[gameId] = (async () => {
       try {
@@ -195,30 +200,27 @@ const QRStore = (() => {
         if (pRes.error || rRes.error || aRes.error) {
           throw pRes.error || rRes.error || aRes.error;
         }
-
-        // First-time migration: DB empty for this game but the browser
-        // has local data → push local up, then treat DB as source.
-        if (!pRes.data.length && c.players.length) {
-          console.info(
-            `[QuestRealm] migrating local "${gameId}" data to Supabase…`
-          );
-          bgUpsertPlayers(gameId, c.players);
-          bgUpsertRounds(gameId, c.rounds);
-          c.activity.forEach((e) => bgInsertActivity(gameId, e));
-          return c;
-        }
-
         c.players = pRes.data.map(rowToPlayer);
         c.rounds = rRes.data.map(rowToRound);
         c.activity = aRes.data.map(rowToActivity);
-        writeLocal(keyFor(gameId), c.players);
-        writeLocal(roundsKeyFor(gameId), c.rounds);
-        writeLocal(activityKeyFor(gameId), c.activity);
+
+        // One-time migration: DB empty for this game but this browser
+        // still holds an old local ledger → upload it.
+        const legacyPlayers = readLegacy(gameId, 'players');
+        if (!c.players.length && legacyPlayers.length) {
+          console.info(`[QuestRealm] uploading this browser's old "${gameId}" ledger to Supabase…`);
+          c.players = legacyPlayers;
+          c.rounds = readLegacy(gameId, 'rounds');
+          c.activity = readLegacy(gameId, 'activity');
+          bgUpsertPlayers(gameId, c.players);
+          bgUpsertRounds(gameId, c.rounds);
+          c.activity.forEach((e) => bgInsertActivity(gameId, e));
+        }
+        statuses[gameId] = 'ready';
       } catch (e) {
-        console.error(
-          `[QuestRealm] hydrate "${gameId}" failed — using local cache.`,
-          e
-        );
+        console.error(`[QuestRealm] loading "${gameId}" from Supabase failed.`, e);
+        // A failed refetch keeps already-loaded data usable.
+        if (status(gameId) !== 'ready') statuses[gameId] = 'error';
       }
       fireSync(gameId);
       return c;
@@ -238,13 +240,18 @@ const QRStore = (() => {
     if (window.location.pathname.endsWith('leaderboard.html') && !g) {
       ids.add('grand-austria-hotel'); // leaderboard's default game
     }
-    ids.forEach(hydrate);
+    ids.forEach((id) => hydrate(id, { force: true }));
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', autoHydrate);
   } else {
     autoHydrate();
   }
+  // Mobile browsers restore pages from the back/forward cache without
+  // re-running scripts — refetch so a "back" never shows stale scores.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) autoHydrate();
+  });
 
   // ═══════════════ Public API (unchanged signatures) ═════════════
 
@@ -259,8 +266,8 @@ const QRStore = (() => {
   }
 
   function savePlayers(gameId, players) {
+    if (!canWrite(gameId)) return;
     cacheFor(gameId).players = players;
-    writeLocal(keyFor(gameId), players);
     bgUpsertPlayers(gameId, players);
   }
 
@@ -270,8 +277,8 @@ const QRStore = (() => {
   }
 
   function saveRounds(gameId, rounds) {
+    if (!canWrite(gameId)) return;
     cacheFor(gameId).rounds = rounds;
-    writeLocal(roundsKeyFor(gameId), rounds);
     bgUpsertRounds(gameId, rounds);
   }
 
@@ -283,11 +290,11 @@ const QRStore = (() => {
   function pushActivity(gameId, entry) {
     const c = cacheFor(gameId);
     c.activity = [...c.activity, entry];
-    writeLocal(activityKeyFor(gameId), c.activity);
     bgInsertActivity(gameId, entry);
   }
 
   function addPlayer(gameId, name, emoji) {
+    if (!canWrite(gameId)) return null;
     const players = loadPlayers(gameId);
     const player = {
       id: 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
@@ -305,6 +312,7 @@ const QRStore = (() => {
   }
 
   function addScore(gameId, playerId, delta) {
+    if (!canWrite(gameId)) return null;
     const players = loadPlayers(gameId);
     const player = players.find((p) => p.id === playerId);
     if (!player) return null;
@@ -326,6 +334,7 @@ const QRStore = (() => {
 
   // A game was won: the victor's streak climbs, everyone else's resets.
   function recordWin(gameId, winnerId) {
+    if (!canWrite(gameId)) return null;
     const players = loadPlayers(gameId);
     const winner = players.find((p) => p.id === winnerId);
     if (!winner) return null;
@@ -357,6 +366,7 @@ const QRStore = (() => {
   // participants' streaks (non-participants are left untouched), writes the
   // round to the Score Book, and logs one activity entry.
   function recordGame(gameId, entries, winnerId, tieNote = '') {
+    if (!canWrite(gameId)) return null;
     const players = loadPlayers(gameId);
     const byId = Object.fromEntries(players.map((p) => [p.id, p]));
     const participants = entries.filter(
@@ -418,6 +428,7 @@ const QRStore = (() => {
   }
 
   function removePlayer(gameId, playerId) {
+    if (!canWrite(gameId)) return;
     const players = loadPlayers(gameId).filter((p) => p.id !== playerId);
     savePlayers(gameId, players);
     bgDeletePlayer(gameId, playerId);
@@ -445,6 +456,7 @@ const QRStore = (() => {
     saveRounds,
     loadActivity,
     hydrate,
+    status,
     onSync,
   };
 })();

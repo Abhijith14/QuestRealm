@@ -26,7 +26,7 @@ Plain HTML/CSS/JS — no build step, no dependencies.
 - Serve the folder (`python3 -m http.server`) — recommended so the `?game=` URLs behave nicely, or
 - Host on **GitHub Pages**: Settings → Pages → deploy from the branch root. Done.
 
-## Data: Supabase (cache-first), with localStorage as fallback
+## Data: Supabase (fetched fresh on every load)
 
 Scores live in a **Supabase** (Postgres) database — shared across everyone who opens the site — with three tables per game, mirroring the original storage shape:
 
@@ -36,7 +36,7 @@ Scores live in a **Supabase** (Postgres) database — shared across everyone who
 
 All three are keyed by `game_id` and protected by Row-Level Security. The connection is configured in [`js/config.js`](js/config.js) via a **public anon key** — safe to ship in client JS; the database is guarded by RLS policies, not by hiding the key. The `service_role` key and DB password are never in the repo.
 
-**Cache-first design.** [`js/storage.js`](js/storage.js) keeps an in-memory cache (mirrored to `localStorage`) so reads stay synchronous and the UI renders instantly. On load it hydrates the cache from Supabase and re-renders (`QRStore.onSync`); writes update the cache immediately and push to Supabase in the background. If Supabase is unreachable, the site falls back to the last-known `localStorage` copy. The first time a game exists only locally, its data is migrated up to Supabase automatically.
+**No browser storage.** [`js/storage.js`](js/storage.js) fetches each game's data from Supabase on every page load (and again when a phone restores the page from its back/forward cache), so every device always shows the same, current ledger. Nothing is kept in `localStorage` (the only exception: if the database has no data for a game but a browser still holds a ledger from the old localStorage-only version, it is uploaded once). While the fetch is in flight the page shows "Fetching the ledger…" and the action buttons stay disabled; writes are refused until the data has loaded, so a half-loaded page can't overwrite real rounds. Writes update an in-memory copy immediately and are pushed to Supabase in the background. If Supabase is unreachable, the page says so instead of showing an empty ledger.
 
 The storage layer stays isolated behind the same small API (`loadPlayers`, `savePlayers`, `addPlayer`, `addScore`, `recordWin`, `removePlayer`, `loadRounds`, `loadActivity`) — the UI never touches the backend directly. Grand Austria Hotel's first six real games (including two tiebreaks) are seeded directly in the database.
 
